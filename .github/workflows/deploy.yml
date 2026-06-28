@@ -20,11 +20,22 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
+      - name: Check if infrastructure exists
+        id: check-infra
+        run: |
+          if aws ecr describe-repositories --repository-names notes-api --region us-east-1 2>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Login to ECR
+        if: steps.check-infra.outputs.exists == 'true'
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
       - name: Build and push Docker image
+        if: steps.check-infra.outputs.exists == 'true'
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: notes-api
@@ -38,9 +49,14 @@ jobs:
             .
 
       - name: Force ECS redeployment
+        if: steps.check-infra.outputs.exists == 'true'
         run: |
           aws ecs update-service \
             --cluster notes-api-cluster \
             --service notes-api-service \
             --force-new-deployment \
             --region us-east-1
+
+      - name: Skip deployment
+        if: steps.check-infra.outputs.exists == 'false'
+        run: echo "Infrastructure not deployed. Skipping deployment."
